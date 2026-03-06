@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+line-bot-sdk
+sqlalchemy
+psycopg2-binary
+python-dotenv
+requests
+twstock
+apscheduler
