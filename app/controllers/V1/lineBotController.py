@@ -1,3 +1,4 @@
+import re
 from fastapi import APIRouter, Request, Header, HTTPException, Depends
 from linebot.v3.webhook import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
@@ -12,6 +13,11 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 handler = WebhookHandler(settings.LINE_CHANNEL_SECRET)
 
+@router.get("/")
+async def home():
+    """根目錄路由實作"""
+    return {"status": "running", "message": "Stock-Line-bot is alive!"}
+
 @router.post("/webhook")
 async def lineWebhook(
     request: Request,
@@ -19,42 +25,47 @@ async def lineWebhook(
     db: AsyncSession = Depends(get_db)
 ):
     """處理 Line Webhook 請求"""
-    # 立即印出日誌，確保連線有到
     logger.info("--- 收到 Webhook 請求 ---")
     
     if not x_line_signature:
-        logger.warning("缺少 X-Line-Signature 標頭")
         raise HTTPException(status_code=400, detail="Missing X-Line-Signature header")
 
     body = await request.body()
     body_str = body.decode("utf-8")
     
-    print(f"DEBUG: Signature: {x_line_signature}")
-    print(f"DEBUG: Body: {body_str}")
-
     try:
-        # 確保 handler 使用的是最新的 Secret
-        handler = WebhookHandler(settings.LINE_CHANNEL_SECRET)
         lineBotService = LineBotService(db)
-        
-        # 取得所有事件
         events = handler.parser.parse(body_str, x_line_signature)
-        logger.info(f"收到 {len(events)} 個事件")
         
         for event in events:
-            # 如果是 LINE Console 的 Verify 測試，這是一個 dummy 事件
             if isinstance(event, MessageEvent) and isinstance(event.message, TextMessageContent):
-                # 處理訊息事件
-                await lineBotService.handleMessage(event)
-            else:
-                logger.info(f"收到非訊息事件: {type(event)}")
+                userMessage = event.message.text
+                
+                # --- 這是在 Controller 層級的兩個核心判斷 (Judgments) ---
+                
+                # 判斷 1: 關注股票 (用於每日報告)
+                if userMessage.startswith("關注股票"):
+                    stockSymbols = re.findall(r'\d+', userMessage)
+                    if stockSymbols:
+                        lineUserId = event.source.user_id
+                        print(f"DEBUG: [Controller] 偵測到「關注」指令：{stockSymbols} (User: {lineUserId})")
+                        await lineBotService.handleWatchStock(lineUserId, stockSymbols)
+                
+                # 判斷 2: 加入股票 (用於歷史爬取)
+                elif userMessage.startswith("加入股票") or userMessage.startswith("股票"):
+                    stockSymbols = re.findall(r'\d+', userMessage)
+                    if stockSymbols:
+                        print(f"DEBUG: [Controller] 偵測到「加入」指令：{stockSymbols}")
+                        await lineBotService.handleJoinStock(stockSymbols)
+                
+                else:
+                    print(f"DEBUG: [Controller] 忽略非指令訊息：{userMessage}")
                 
     except InvalidSignatureError:
-        logger.error(f"Invalid Line Signature! Secret used: {settings.LINE_CHANNEL_SECRET[:4]}...{settings.LINE_CHANNEL_SECRET[-4:]}")
+        logger.error("Invalid Line Signature")
         raise HTTPException(status_code=400, detail="Invalid signature")
     except Exception as e:
         logger.error(f"Webhook processing error: {str(e)}")
-        # 回報詳細錯誤，避免 LINE 回報 401 但其實是其他問題
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"status": "ok"}

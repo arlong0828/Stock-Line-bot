@@ -5,10 +5,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 使用非同步引擎
+# 使用非同步引擎 (關閉 SQL 日誌)
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=True,
+    echo=False,
     future=True
 )
 

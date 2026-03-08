@@ -45,24 +45,24 @@ class StockRead(StockBase):
         from_attributes = True
 ```
 
-## 3. Services Layer (`app/services/stock_service.py`)
+## 3. Services Layer (`app/services/stockService.py`)
 
 ```python
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from app.models.stock import Stock
+from app.models.stockData import StockInfo
 from app.schemas.stock import StockCreate
 
-async def get_stock_by_symbol(db: AsyncSession, symbol: str):
-    result = await db.execute(select(Stock).filter(Stock.symbol == symbol))
+async def getStockBySymbol(db: AsyncSession, symbol: str):
+    result = await db.execute(select(StockInfo).filter(StockInfo.symbol == symbol))
     return result.scalars().first()
 
-async def create_stock(db: AsyncSession, stock_in: StockCreate):
-    db_obj = Stock(**stock_in.model_dump())
-    db.add(db_obj)
+async def createStock(db: AsyncSession, stockIn: StockCreate):
+    dbObj = StockInfo(**stockIn.model_dump())
+    db.add(dbObj)
     await db.commit()
-    await db.refresh(db_obj)
-    return db_obj
+    await db.refresh(dbObj)
+    return dbObj
 ```
 
 ## 4. API/Router Layer (`app/api/v1/stock.py`)
@@ -72,14 +72,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database.session import get_db
 from app.schemas.stock import StockRead, StockCreate
-from app.services import stock_service
+from app.services import stockService
 
 router = APIRouter()
 
 @router.post("/", response_model=StockRead)
-async def create_stock(stock_in: StockCreate, db: AsyncSession = Depends(get_db)):
-    db_stock = await stock_service.get_stock_by_symbol(db, stock_in.symbol)
-    if db_stock:
+async def createStockApi(stockIn: StockCreate, db: AsyncSession = Depends(get_db)):
+    dbStock = await stockService.getStockBySymbol(db, stockIn.symbol)
+    if dbStock:
         raise HTTPException(status_code=400, detail="Stock already exists")
-    return await stock_service.create_stock(db, stock_in)
+    return await stockService.createStock(db, stockIn)
 ```
