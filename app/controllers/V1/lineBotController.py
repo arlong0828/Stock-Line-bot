@@ -16,6 +16,7 @@ handler = WebhookHandler(settings.LINE_CHANNEL_SECRET)
 @router.get("/")
 async def home():
     """根目錄路由實作"""
+    logger.info("收到健康檢查請求 (Root)")
     return {"status": "running", "message": "Stock-Line-bot is alive!"}
 
 @router.post("/webhook")
