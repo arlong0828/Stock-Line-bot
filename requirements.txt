@@ -2,8 +2,13 @@ fastapi
 uvicorn
 line-bot-sdk
 sqlalchemy
+asyncpg
 psycopg2-binary
 python-dotenv
+pydantic-settings
 requests
 twstock
 apscheduler
+alembic
+pytest
+httpx
