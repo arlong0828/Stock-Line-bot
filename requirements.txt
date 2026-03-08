@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+gunicorn
 line-bot-sdk
 sqlalchemy
 asyncpg
@@ -12,3 +13,7 @@ apscheduler
 alembic
 pytest
 httpx
+python-dateutil
+lxml
+aiosqlite
+pytz

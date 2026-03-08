@@ -18,7 +18,7 @@ target_metadata = Base.metadata
 
 def get_url():
     """取得連線字串"""
-    return settings.DATABASE_URL
+    return settings.asyncDatabaseUrl
 
 def run_migrations_offline() -> None:
     url = get_url()
