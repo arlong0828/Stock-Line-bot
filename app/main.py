@@ -1,13 +1,11 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
+from app.controllers.V1 import lineBotController
 
-app = FastAPI()
+app = FastAPI(title="Stock Line Bot API")
+
+# 註冊路由
+app.include_router(lineBotController.router, tags=["Line Bot"])
 
 @app.get("/")
-def home():
-    return {"status": "running"}
-
-@app.post("/webhook")
-async def webhook(request: Request):
-    body = await request.json()
-    print(body)
-    return {"status": "ok"}
+async def home():
+    return {"status": "running", "message": "Stock-Line-bot is alive!"}

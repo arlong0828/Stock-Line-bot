@@ -148,3 +148,6 @@ cython_debug/
 
 # VS Code
 .vscode/
+
+# Database
+stock_bot.db
