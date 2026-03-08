@@ -18,12 +18,22 @@ class Settings(BaseSettings):
     # 如果環境變數中有 DATABASE_URL 則優先使用 (Render 會提供)
     DATABASE_URL: str = os.environ.get("DATABASE_URL", "sqlite+aiosqlite:///./stock_bot.db")
 
-    # Render 部署輔助：如果 URL 以 postgres:// 開頭，改為 postgresql+asyncpg://
+    # Render/Neon 部署輔助：確保使用 postgresql+asyncpg:// 並移除不相容參數
     @property
     def asyncDatabaseUrl(self) -> str:
         url = self.DATABASE_URL
-        if url and url.startswith("postgres://"):
+        if not url:
+            return ""
+        
+        # 1. 移除不相容的 SSL 查詢參數 (asyncpg 不支援 sslmode)
+        if "?" in url:
+            url = url.split("?")[0]
+
+        # 2. 替換協定開頭
+        if url.startswith("postgres://"):
             url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         return url
 
     model_config = SettingsConfigDict(
