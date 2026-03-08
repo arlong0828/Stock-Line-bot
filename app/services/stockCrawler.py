@@ -87,46 +87,19 @@ class StockCrawlerService:
             return totalRecords
 
     async def updateAllStocksData(self):
-        """每日收盤自動更新：更新所有已存在資料庫中的股票最新資料"""
+        """每日收盤自動更新"""
         async with AsyncSessionLocal() as db:
-            # 1. 取得資料庫中所有的股票
             result = await db.execute(select(StockInfo))
             allStocks = result.scalars().all()
             
             if not allStocks:
-                print("DEBUG: [自動更新] 資料庫目前沒有任何股票。")
                 return
 
-            print(f"DEBUG: [自動更新] 開始更新 {len(allStocks)} 支股票的最新資料...")
+            print(f"DEBUG: [自動更新] 開始同步 {len(allStocks)} 支股票...")
             
-            now = datetime.now()
-            year, month = now.year, now.month
-            loop = asyncio.get_event_loop()
-
             for stockInfo in allStocks:
-                symbol = stockInfo.symbol
-                print(f"DEBUG: [自動更新] 正在同步 {symbol} ({stockInfo.name})...")
-                
-                try:
-                    stock = twstock.Stock(symbol, initial_fetch=False)
-                    data = await loop.run_in_executor(None, stock.fetch, year, month)
-                    
-                    if data:
-                        for d in data:
-                            historyEntry = StockHistory(
-                                stock_id=stockInfo.id, date=d.date, open_price=d.open,
-                                high_price=d.high, low_price=d.low, close_price=d.close,
-                                volume=int(d.capacity)
-                            )
-                            await db.merge(historyEntry)
-                        await db.commit()
-                        print(f"DEBUG: [自動更新] {symbol} 同步完成。")
-                except Exception as e:
-                    await db.rollback()
-                    print(f"ERROR: [自動更新] {symbol} 失敗: {str(e)}")
-                
-                await asyncio.sleep(1) # 每日更新稍微慢一點，對伺服器更友善
-
-            print("DONE: [自動更新] 全數股票資料同步完畢。")
+                # 為了防止連線池爆炸，我們每一支股票都分開開啟 Session
+                asyncio.create_task(self.fetch10YearHistory(stockInfo.symbol))
+                await asyncio.sleep(2) # 延遲啟動，避免瞬間耗盡連線
 
 stockCrawlerService = StockCrawlerService()

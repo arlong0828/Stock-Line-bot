@@ -5,11 +5,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 使用非同步引擎 (關閉 SQL 日誌)
+# 優化連線池設定以支援大量背景爬蟲
 engine = create_async_engine(
     settings.asyncDatabaseUrl,
     echo=False,
-    future=True
+    future=True,
+    pool_size=20,         # 增加基礎連線數
+    max_overflow=10,      # 增加允許的溢位連線數
+    pool_recycle=300,     # 每 5 分鐘回收連線，防止被雲端資料庫斷線
+    pool_pre_ping=True    # 每次連線前先測試是否可用
 )
 
 # 使用 AsyncSession
@@ -21,7 +25,6 @@ AsyncSessionLocal = sessionmaker(
     autoflush=False
 )
 
-# 關鍵修正：必須呼叫 declarative_base() 來生成 Base 類別
 Base = declarative_base()
 
 async def get_db():
