@@ -37,26 +37,30 @@ class LineBotService:
         return user
 
     async def handleWatchStock(self, lineUserId: str, symbols: list):
-        """處理關注股票請求：建立使用者與股票的關聯"""
+        """處理關注股票請求：建立使用者與股票的關聯，並自動觸發歷史爬取"""
         user = await self.getOrCreateUser(lineUserId)
-        
+
         for symbol in symbols:
             try:
-                # 確保股票資訊已建立
+                # 1. 確保股票資訊已建立
                 stockInfo = await self.stockCrawler.getOrCreateStockInfo(self.db, symbol)
-                
-                # 檢查是否已經關注過 (現在 user.watchedStocks 已經預先載入了)
+
+                # 2. 建立關注關聯
                 if stockInfo not in user.watchedStocks:
                     user.watchedStocks.append(stockInfo)
-                    # 同時標記系統級關注 (用於 13:35 報告)
                     stockInfo.isWatched = True
                     await self.db.commit()
                     print(f"DEBUG: [關注] 使用者 {lineUserId} 已關注 {symbol}")
+
+                    # 3. 聯動機制：自動啟動 10 年歷史爬取 (如果之前沒加入過)
+                    print(f"DEBUG: [聯動] 偵測到新關注，自動啟動 {symbol} 歷史爬取...")
+                    asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
                 else:
                     print(f"DEBUG: [關注] 使用者 {lineUserId} 之前已關注過 {symbol}")
             except Exception as e:
                 await self.db.rollback()
                 print(f"ERROR: [關注] 處理 {symbol} 失敗: {str(e)}")
+
 
     async def handleJoinStock(self, symbols: list):
         """處理加入股票請求：背景爬取 10 年歷史資料 (維持靜音)"""

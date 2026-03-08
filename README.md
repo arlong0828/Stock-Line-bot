@@ -48,6 +48,13 @@ python -m alembic upgrade head
 python -m uvicorn app.main:app --reload
 ```
 
+### 5. 開啟外網隧道 (Tunnel)
+為了讓 LINE 平台能連線到你的本地電腦，需啟動隧道服務：
+```bash
+npx cloudflared tunnel --url http://localhost:8000
+```
+啟動後，請複製 `https://xxxx.trycloudflare.com` 網址並填入 LINE Developers Console 的 Webhook URL 欄位。
+
 ## 📱 Line Bot 指令
 
 | 指令範例 | 功能描述 |

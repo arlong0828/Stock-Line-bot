@@ -5,16 +5,31 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# 優化連線池設定以支援大量背景爬蟲
-engine = create_async_engine(
-    settings.asyncDatabaseUrl,
-    echo=False,
-    future=True,
-    pool_size=20,         # 增加基礎連線數
-    max_overflow=10,      # 增加允許的溢位連線數
-    pool_recycle=300,     # 每 5 分鐘回收連線，防止被雲端資料庫斷線
-    pool_pre_ping=True    # 每次連線前先測試是否可用
-)
+# --- 動態偵測與設定連線池 ---
+# 如果是 SQLite，不能帶 pool_size 等參數；如果是 Postgres，則需要優化
+dbUrl = settings.asyncDatabaseUrl
+isSqlite = dbUrl.startswith("sqlite")
+
+if isSqlite:
+    # SQLite 設定：輕量、不使用連線池
+    engine = create_async_engine(
+        dbUrl,
+        echo=False,
+        future=True
+    )
+    logger.info("DEBUG: [資料庫] 目前運行於 本地端 (SQLite) 模式")
+else:
+    # Postgres (Render/Neon) 設定：高效能連線池
+    engine = create_async_engine(
+        dbUrl,
+        echo=False,
+        future=True,
+        pool_size=10,         # 雲端模式保留 10 個連線
+        max_overflow=20,      # 支援突發的高流量
+        pool_recycle=300,     # 防止被雲端平台斷線
+        pool_pre_ping=True
+    )
+    logger.info("DEBUG: [資料庫] 目前運行於 雲端 (Postgres) 模式")
 
 # 使用 AsyncSession
 AsyncSessionLocal = sessionmaker(
