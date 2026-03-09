@@ -70,8 +70,8 @@ class LineBotService:
                     user.watchedStocks.append(stockInfo)
                     stockInfo.isWatched = True
                     successList.append(f"{stockInfo.name}({symbol})")
-                    # 自動啟動背景爬取
-                    asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
+                    # 自動啟動背景爬取 - 暫時停用以節省資料庫容量
+                    # asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
                 else:
                     alreadyWatched.append(symbol)
             except Exception as e:
@@ -94,8 +94,8 @@ class LineBotService:
             await self.replyText(replyToken, "\n\n".join(replyMsgs))
 
     async def handleJoinStock(self, symbols: list, replyToken: str):
-        """處理加入股票請求：僅啟動爬取並簡單回覆"""
-        for symbol in symbols:
-            asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
+        """處理加入股票請求：僅啟動爬取並簡單回覆 - 暫時停用"""
+        # for symbol in symbols:
+        #     asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
         
-        await self.replyText(replyToken, f"🚀 已開始為您爬取 {', '.join(symbols)} 的 10 年歷史資料。\n此過程完全免費，請稍後在資料庫查看進度。")
+        await self.replyText(replyToken, f"ℹ️ 提示：目前已暫停歷史資料爬取功能以節省資源。\n您的指令 {', '.join(symbols)} 未被執行。")
