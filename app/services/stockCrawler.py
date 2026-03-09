@@ -33,7 +33,10 @@ class StockCrawlerService:
 
         if not stockInfo:
             codeInfo = twstock.codes.get(symbol)
-            name = codeInfo.name if codeInfo else "未知股票"
+            if not codeInfo:
+                return None
+                
+            name = codeInfo.name
             isEtf = self.isEtf(symbol)
 
             stockInfo = StockInfo(symbol=symbol, name=name, is_etf=isEtf)

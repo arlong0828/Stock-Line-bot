@@ -5,18 +5,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import update, select
 from app.models.stockData import StockInfo, User
+from app.core.config import settings
+from linebot.v3.messaging import (
+    AsyncMessagingApi,
+    AsyncApiClient,
+    Configuration,
+    TextMessage,
+    ReplyMessageRequest
+)
 import logging
 
 logger = logging.getLogger(__name__)
+lineConfig = Configuration(access_token=settings.LINE_CHANNEL_ACCESS_TOKEN)
 
 class LineBotService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.stockCrawler = stockCrawlerService
 
+    async def replyText(self, replyToken: str, text: str):
+        """發送免費的回覆訊息 (Reply Message)"""
+        async with AsyncApiClient(lineConfig) as apiClient:
+            lineBotApi = AsyncMessagingApi(apiClient)
+            await lineBotApi.reply_message(
+                ReplyMessageRequest(
+                    reply_token=replyToken,
+                    messages=[TextMessage(text=text)]
+                )
+            )
+
     async def getOrCreateUser(self, lineUserId: str) -> User:
-        """取得或建立使用者資料 (預先載入關注清單)"""
-        # 使用 selectinload 確保關聯屬性在非同步下可用
         result = await self.db.execute(
             select(User)
             .filter(User.lineUserId == lineUserId)
@@ -27,43 +45,57 @@ class LineBotService:
             user = User(lineUserId=lineUserId)
             self.db.add(user)
             await self.db.commit()
-            await self.db.refresh(user)
-            # 新使用者需要重新載入關聯屬性
+            # 重新載入以獲取 ID
             result = await self.db.execute(
-                select(User).filter(User.id == user.id).options(selectinload(User.watchedStocks))
+                select(User).filter(User.lineUserId == lineUserId).options(selectinload(User.watchedStocks))
             )
             user = result.scalars().first()
-            print(f"DEBUG: [使用者] 已註冊新使用者: {lineUserId}")
         return user
 
-    async def handleWatchStock(self, lineUserId: str, symbols: list):
-        """處理關注股票請求：建立使用者與股票的關聯，並自動觸發歷史爬取"""
+    async def handleWatchStock(self, lineUserId: str, symbols: list, replyToken: str):
+        """處理關注股票請求：建立關聯並回覆訊息"""
         user = await self.getOrCreateUser(lineUserId)
-
+        successList = []
+        errorList = []
+        alreadyWatched = []
+        
         for symbol in symbols:
             try:
-                # 1. 確保股票資訊已建立
                 stockInfo = await self.stockCrawler.getOrCreateStockInfo(self.db, symbol)
+                if not stockInfo:
+                    errorList.append(symbol)
+                    continue
 
-                # 2. 建立關注關聯
                 if stockInfo not in user.watchedStocks:
                     user.watchedStocks.append(stockInfo)
                     stockInfo.isWatched = True
-                    await self.db.commit()
-                    print(f"DEBUG: [關注] 使用者 {lineUserId} 已關注 {symbol}")
-
-                    # 3. 聯動機制：自動啟動 10 年歷史爬取 (如果之前沒加入過)
-                    print(f"DEBUG: [聯動] 偵測到新關注，自動啟動 {symbol} 歷史爬取...")
+                    successList.append(f"{stockInfo.name}({symbol})")
+                    # 自動啟動背景爬取
                     asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
                 else:
-                    print(f"DEBUG: [關注] 使用者 {lineUserId} 之前已關注過 {symbol}")
+                    alreadyWatched.append(symbol)
             except Exception as e:
-                await self.db.rollback()
-                print(f"ERROR: [關注] 處理 {symbol} 失敗: {str(e)}")
+                print(f"ERROR: [關注] {symbol} 失敗: {str(e)}")
+                errorList.append(symbol)
 
+        await self.db.commit()
 
-    async def handleJoinStock(self, symbols: list):
-        """處理加入股票請求：背景爬取 10 年歷史資料 (維持靜音)"""
+        replyMsgs = []
+        if successList:
+            replyMsgs.append(f"✅ 關注成功！\n您已關注：{', '.join(successList)}\n系統將於每日 13:35 為您推送收盤報告。")
+        
+        if errorList:
+            replyMsgs.append(f"❌ 輸入錯誤，股票不存在：{', '.join(errorList)}")
+
+        if not successList and not errorList and alreadyWatched:
+            replyMsgs.append("ℹ️ 提示：您輸入的股票已經在您的關注清單中囉！")
+
+        if replyMsgs:
+            await self.replyText(replyToken, "\n\n".join(replyMsgs))
+
+    async def handleJoinStock(self, symbols: list, replyToken: str):
+        """處理加入股票請求：僅啟動爬取並簡單回覆"""
         for symbol in symbols:
-            print(f"DEBUG: [Line] 正在啟動 {symbol} 的 10 年歷史爬取任務...")
             asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
+        
+        await self.replyText(replyToken, f"🚀 已開始為您爬取 {', '.join(symbols)} 的 10 年歷史資料。\n此過程完全免費，請稍後在資料庫查看進度。")

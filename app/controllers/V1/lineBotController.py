@@ -49,15 +49,17 @@ async def lineWebhook(
                     stockSymbols = re.findall(r'\d+', userMessage)
                     if stockSymbols:
                         lineUserId = event.source.user_id
+                        replyToken = event.reply_token
                         print(f"DEBUG: [Controller] 偵測到「關注」指令：{stockSymbols} (User: {lineUserId})")
-                        await lineBotService.handleWatchStock(lineUserId, stockSymbols)
+                        await lineBotService.handleWatchStock(lineUserId, stockSymbols, replyToken)
                 
-                # 判斷 2: 加入股票 (用於歷史爬取)
-                elif userMessage.startswith("加入股票") or userMessage.startswith("股票"):
-                    stockSymbols = re.findall(r'\d+', userMessage)
-                    if stockSymbols:
-                        print(f"DEBUG: [Controller] 偵測到「加入」指令：{stockSymbols}")
-                        await lineBotService.handleJoinStock(stockSymbols)
+                # 判斷 2: 加入股票 (用於歷史爬取) - 暫時停用以節省資料庫容量
+                # elif userMessage.startswith("加入股票") or userMessage.startswith("股票"):
+                #     stockSymbols = re.findall(r'\d+', userMessage)
+                #     if stockSymbols:
+                #         replyToken = event.reply_token
+                #         print(f"DEBUG: [Controller] 偵測到「加入」指令：{stockSymbols}")
+                #         await lineBotService.handleJoinStock(stockSymbols, replyToken)
                 
                 else:
                     print(f"DEBUG: [Controller] 忽略非指令訊息：{userMessage}")
