@@ -1,6 +1,5 @@
 import twstock
 import asyncio
-from collections import namedtuple
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,12 +7,6 @@ from sqlalchemy.future import select
 from app.models.stockData import StockInfo, StockHistory
 from app.database.session import AsyncSessionLocal
 import logging
-
-# --- Monkey Patch ---
-if len(twstock.stock.DATATUPLE._fields) < 11:
-    new_fields = twstock.stock.DATATUPLE._fields + ('unknown',)
-    twstock.stock.DATATUPLE = namedtuple('Data', new_fields)
-# --------------------
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -26,6 +19,49 @@ class StockCrawlerService:
         if codeInfo and "ETF" in codeInfo.type:
             return True
         return False
+
+    async def upsertHistoryRows(self, db: AsyncSession, stockId: int, rows: list):
+        """依 stock_id + date 做 upsert，避免 duplicate insert 打爆每日更新排程。"""
+        if not rows:
+            return 0
+
+        normalizedRows = []
+        for row in rows:
+            rowDate = row.date.date() if hasattr(row.date, 'date') else row.date
+            normalizedRows.append((rowDate, row))
+
+        targetDates = [rowDate for rowDate, _ in normalizedRows]
+        existingResult = await db.execute(
+            select(StockHistory).filter(
+                StockHistory.stock_id == stockId,
+                StockHistory.date.in_(targetDates)
+            )
+        )
+        existingByDate = {history.date: history for history in existingResult.scalars().all()}
+
+        changed = 0
+        for rowDate, row in normalizedRows:
+            historyEntry = existingByDate.get(rowDate)
+            if historyEntry:
+                historyEntry.open_price = row.open
+                historyEntry.high_price = row.high
+                historyEntry.low_price = row.low
+                historyEntry.close_price = row.close
+                historyEntry.volume = int(row.capacity)
+            else:
+                db.add(StockHistory(
+                    stock_id=stockId,
+                    date=rowDate,
+                    open_price=row.open,
+                    high_price=row.high,
+                    low_price=row.low,
+                    close_price=row.close,
+                    volume=int(row.capacity)
+                ))
+            changed += 1
+
+        await db.commit()
+        return changed
 
     async def getOrCreateStockInfo(self, db: AsyncSession, symbol: str) -> StockInfo:
         result = await db.execute(select(StockInfo).filter(StockInfo.symbol == symbol))
@@ -66,15 +102,8 @@ class StockCrawlerService:
                 try:
                     data = await loop.run_in_executor(None, stock.fetch, year, month)
                     if data:
-                        for d in data:
-                            historyEntry = StockHistory(
-                                stock_id=stockId, date=d.date, open_price=d.open,
-                                high_price=d.high, low_price=d.low, close_price=d.close,
-                                volume=int(d.capacity)
-                            )
-                            await db.merge(historyEntry)
-                        await db.commit()
-                        totalRecords += len(data)
+                        changed = await self.upsertHistoryRows(db, stockId, data)
+                        totalRecords += changed
                 except Exception as e:
                     await db.rollback()
                     if "UNIQUE constraint failed" not in str(e):
@@ -112,14 +141,7 @@ class StockCrawlerService:
                     data = await loop.run_in_executor(None, stock.fetch, year, month)
                     
                     if data:
-                        for d in data:
-                            historyEntry = StockHistory(
-                                stock_id=stockInfo.id, date=d.date, open_price=d.open,
-                                high_price=d.high, low_price=d.low, close_price=d.close,
-                                volume=int(d.capacity)
-                            )
-                            await db.merge(historyEntry)
-                        await db.commit()
+                        await self.upsertHistoryRows(db, stockInfo.id, data)
                         print(f"DEBUG: [自動更新] {symbol} 同步完成。")
                 except Exception as e:
                     await db.rollback()

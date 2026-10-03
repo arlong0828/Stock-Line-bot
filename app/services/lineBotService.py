@@ -1,6 +1,7 @@
 import re
 import asyncio
 from app.services.stockCrawler import stockCrawlerService
+from app.services.breakoutService import breakoutService
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import update, select
@@ -13,6 +14,7 @@ class LineBotService:
     def __init__(self, db: AsyncSession):
         self.db = db
         self.stockCrawler = stockCrawlerService
+        self.breakoutService = breakoutService
 
     async def getOrCreateUser(self, lineUserId: str) -> User:
         """取得或建立使用者資料 (預先載入關注清單)"""
@@ -33,7 +35,7 @@ class LineBotService:
                 select(User).filter(User.id == user.id).options(selectinload(User.watchedStocks))
             )
             user = result.scalars().first()
-            print(f"DEBUG: [使用者] 已註冊新使用者: {lineUserId}")
+            logger.info("已註冊新的 LINE 使用者")
         return user
 
     async def handleWatchStock(self, lineUserId: str, symbols: list):
@@ -51,9 +53,9 @@ class LineBotService:
                     # 同時標記系統級關注 (用於 13:35 報告)
                     stockInfo.isWatched = True
                     await self.db.commit()
-                    print(f"DEBUG: [關注] 使用者 {lineUserId} 已關注 {symbol}")
+                    logger.info("LINE 使用者已關注股票 %s", symbol)
                 else:
-                    print(f"DEBUG: [關注] 使用者 {lineUserId} 之前已關注過 {symbol}")
+                    logger.info("LINE 使用者先前已關注股票 %s", symbol)
             except Exception as e:
                 await self.db.rollback()
                 print(f"ERROR: [關注] 處理 {symbol} 失敗: {str(e)}")
@@ -63,3 +65,7 @@ class LineBotService:
         for symbol in symbols:
             print(f"DEBUG: [Line] 正在啟動 {symbol} 的 10 年歷史爬取任務...")
             asyncio.create_task(self.stockCrawler.fetch10YearHistory(symbol))
+
+    async def handleBreakoutAnalysis(self, limit: int = 5) -> str:
+        """產生飆股候選分析報告"""
+        return await self.breakoutService.getBreakoutReport(limit=limit)

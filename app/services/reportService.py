@@ -81,7 +81,7 @@ class ReportService:
                                 messages=[TextMessage(text=fullReport)]
                             )
                             await lineBotApi.push_message(pushRequest)
-                            print(f"DONE: [報告] 已發送至使用者 {user.lineUserId}")
+                            logger.info("收盤報告已成功發送給 LINE 使用者")
                         except Exception as e:
                             print(f"ERROR: [報告] 發送 Line 訊息失敗: {str(e)}")
 
